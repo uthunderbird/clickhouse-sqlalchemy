@@ -5,7 +5,7 @@ from sqlalchemy.engine import default, reflection
 from sqlalchemy.sql import (
     compiler, expression, type_api, literal_column, elements
 )
-from sqlalchemy.types import DATE, INTEGER, VARCHAR, FLOAT
+from sqlalchemy.types import DATE, DATETIME, INTEGER, VARCHAR, FLOAT
 from sqlalchemy.util import inspect_getargspec
 
 from .. import types

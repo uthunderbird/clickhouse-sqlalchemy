@@ -1,6 +1,7 @@
 from datetime import datetime
 
 import requests
+from requests.auth import HTTPBasicAuth
 
 from ...exceptions import DatabaseException
 from .exceptions import HTTPException
@@ -35,7 +36,7 @@ class RequestsTransport(object):
                  **kwargs):
         self.db_url = db_url
         self.db_name = db_name
-        if username and password:
+        if password is not None:
             self.auth = (username, password)
         else:
             self.auth = None
