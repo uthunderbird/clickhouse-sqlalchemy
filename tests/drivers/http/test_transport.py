@@ -118,21 +118,9 @@ class TransportCase(BaseTestCase):
     def check_auth_headers(self, username, password=None):
 
         def request_callback(request):
-            if password is not None:
-                # Great! I accidentally found a bug in `requests`.
-                # Actually, it's possible to use even an empty
-                # username with non-empty password in HTTP Basic
-                # Auth. But more important that you can't provide
-                # non-empty username without password using
-                # `requests` right now.
-                #
-                # When this bug would be fixed, we can replace a
-                # condition with one provided below:
-                # `username is not None or password is not None`.
-                # It will work, I believe.
-
+            if username is not None or password is not None:
                 assert 'authorization' in request.headers
-                credentials = (username, password) if password is not None else (username,)
+                credentials = (username or '', password or '')
                 urlified_credentials = ':'.join(credentials)
                 encoded_credentials = b64encode(urlified_credentials.encode())
                 if compat.PY3:

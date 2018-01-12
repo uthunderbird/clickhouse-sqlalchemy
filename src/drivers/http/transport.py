@@ -36,8 +36,9 @@ class RequestsTransport(object):
                  **kwargs):
         self.db_url = db_url
         self.db_name = db_name
-        if password is not None:
-            self.auth = (username, password)
+        if username is not None or password is not None:
+            # This check should be moved into `requests`
+            self.auth = (username or '', password or '')
         else:
             self.auth = None
         self.timeout = float(timeout) if timeout is not None else None
