@@ -1,12 +1,15 @@
 import re
 
-import six
 from sqlalchemy import schema, types as sqltypes, exc, util as sa_util
 from sqlalchemy.engine import default, reflection
-from sqlalchemy.sql import compiler, expression, type_api
+from sqlalchemy.sql import (
+    compiler, expression, type_api, literal_column, elements
+)
 from sqlalchemy.types import DATE, INTEGER, VARCHAR, FLOAT
+from sqlalchemy.util import inspect_getargspec
 
 from .. import types
+from ..util import compat
 
 
 # Column spec
@@ -24,7 +27,7 @@ ischema_names = {
     'UInt16': INTEGER,
     'UInt8': INTEGER,
     'Date': DATE,
-    'DateTime': types.DateTime,
+    'DateTime': DATETIME,
     'Float64': FLOAT,
     'Float32': FLOAT,
     'String': VARCHAR,
@@ -36,15 +39,19 @@ ischema_names = {
 
 
 class ClickHouseIdentifierPreparer(compiler.IdentifierPreparer):
-    def quote_identifier(self, value):
-        # Never quote identifiers.
-        return self._escape_identifier(value)
-
-    def quote(self, ident, force=None):
-        return ident
+    def _escape_identifier(self, value):
+        value = value.replace(self.escape_quote, self.escape_to_quote)
+        return value.replace('%', '%%')
 
 
 class ClickHouseCompiler(compiler.SQLCompiler):
+    def visit_mod_binary(self, binary, operator, **kw):
+        return self.process(binary.left, **kw) + " %% " + \
+            self.process(binary.right, **kw)
+
+    def post_process_text(self, text):
+        return text.replace('%', '%%')
+
     def visit_count_func(self, fn, **kw):
         # count accepts zero arguments.
         return 'count%s' % self.process(fn.clause_expr, **kw)
@@ -92,6 +99,23 @@ class ClickHouseCompiler(compiler.SQLCompiler):
 
         return text
 
+    def visit_lambda(self, lambda_, **kw):
+        func = lambda_.func
+        spec = inspect_getargspec(func)
+
+        if spec.varargs:
+            raise exc.CompileError('Lambdas with *args are not supported')
+
+        if spec.keywords:
+            raise exc.CompileError('Lambdas with **kwargs are not supported')
+
+        text = ', '.join(spec.args) + ' -> '
+
+        args = [literal_column(arg) for arg in spec.args]
+        text += self.process(func(*args), **kw)
+
+        return text
+
     def visit_extract(self, extract, **kw):
         field = self.extract_map.get(extract.field, extract.field)
         column = self.process(extract.expr, **kw)
@@ -103,6 +127,36 @@ class ClickHouseCompiler(compiler.SQLCompiler):
             return 'toDayOfMonth(%s)' % column
         else:
             return column
+
+    def visit_join(self, join, asfrom=False, **kwargs):
+        join_type = " "
+
+        if join.global_:
+            join_type += "GLOBAL "
+
+        if join.any:
+            join_type += "ANY "
+
+        if join.all:
+            join_type += "ALL "
+
+        if join.isouter:
+            join_type += "LEFT OUTER JOIN "
+        else:
+            join_type += "INNER JOIN "
+
+        if not isinstance(join.onclause, elements.Tuple):
+            raise exc.CompileError(
+                "Only tuple elements are supported. "
+                "Got: %s" % type(join.onclause)
+            )
+
+        return (
+            join.left._compiler_dispatch(self, asfrom=True, **kwargs) +
+            join_type +
+            join.right._compiler_dispatch(self, asfrom=True, **kwargs) +
+            " USING " + join.onclause._compiler_dispatch(self, **kwargs)
+        )
 
     def _compose_select_body(
             self, text, select, inner_columns, froms, byfrom, kwargs):
@@ -197,7 +251,7 @@ class ClickHouseDDLCompiler(compiler.DDLCompiler):
             if not isinstance(expr, expression.ColumnClause):
                 if not hasattr(expr, 'self_group'):
                     # assuming base type (int, string, etc.)
-                    return six.text_type(expr)
+                    return compat.text_type(expr)
                 else:
                     expr = expr.self_group()
             return compiler.process(
