@@ -109,4 +109,5 @@ setup(
         'responses',
         'enum34'
     ],
+    zip_safe=False
 )

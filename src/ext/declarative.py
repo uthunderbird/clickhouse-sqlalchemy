@@ -40,7 +40,7 @@ class ChickHouseDeclarativeMeta(DeclarativeMeta):
         return DeclarativeMeta.__new__(cls, name, bases, d)
 
 
-def get_declarative_base(metadata=None):
+def get_declarative_base(metadata=None, **kwargs):
     return declarative_base(
-        metadata=metadata, metaclass=ChickHouseDeclarativeMeta
+        metadata=metadata, metaclass=ChickHouseDeclarativeMeta, **kwargs
     )
